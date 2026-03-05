@@ -1,7 +1,10 @@
 package io.github.leonnatale.ultest.filter;
 
+import com.auth0.jwt.exceptions.SignatureVerificationException;
+import com.auth0.jwt.exceptions.TokenExpiredException;
 import io.github.leonnatale.ultest.model.person.Person;
 import io.github.leonnatale.ultest.repositories.PersonRepository;
+import io.github.leonnatale.ultest.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,8 +23,13 @@ import java.util.Optional;
 public class AuthenticationFilter extends OncePerRequestFilter {
 
     private final PersonRepository personRepository;
-    public AuthenticationFilter(PersonRepository personRepository) {
+    private final JwtService jwtService;
+    public AuthenticationFilter(
+            PersonRepository personRepository,
+            JwtService jwtService
+    ) {
         this.personRepository = personRepository;
+        this.jwtService = jwtService;
     }
 
     @Override
@@ -31,7 +39,20 @@ public class AuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        Optional<Person> found = personRepository.findById(Long.parseLong(authenticationHeader));
+        String id = authenticationHeader;
+        if (authenticationHeader.startsWith("Bearer")) {
+            String token = authenticationHeader.split(" ")[1];
+            try {
+                id = jwtService.getSubjectFromToken(token);
+            } catch(Exception _error) {
+                id = "";
+            }
+        }
+        if (id.isBlank()) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        Optional<Person> found = personRepository.findById(Long.parseLong(id));
         if (found.isEmpty()) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
             return;
